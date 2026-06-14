@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VetClinic 3D — Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --teal:#176B5B; --teal-dark:#0E4A3E; --mint:#BFE3DB; --cream:#FFF9F0;
+    --ink:#22343A; --coral:#FF6A4D; --amber:#F2B53A; --ok:#2E9E6B;
+    --card-shadow:0 18px 50px rgba(14,74,62,.25);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden}
+  body{font-family:'Nunito',system-ui,sans-serif;background:#0E4A3E;color:var(--ink)}
+  #scene{position:fixed;inset:0;display:block;cursor:grab}
+  #scene.dragging{cursor:grabbing}
+  #scene.hotspot{cursor:pointer}
+
+  /* ---------- HUD ---------- */
+  .hud{position:fixed;z-index:5;pointer-events:none}
+  .hud > *{pointer-events:auto}
+
+  #patientCard{top:16px;left:16px;max-width:300px;background:var(--cream);border-radius:18px;
+    padding:14px 18px;box-shadow:var(--card-shadow);border:2px solid var(--teal)}
+  #patientCard h1{font-family:'Baloo 2',cursive;font-size:1.25rem;color:var(--teal-dark);line-height:1.1}
+  #patientCard .tag{display:inline-block;background:var(--mint);color:var(--teal-dark);
+    font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+    border-radius:99px;padding:2px 10px;margin-bottom:6px}
+  #patientCard p{font-size:.82rem;line-height:1.45;margin-top:6px}
+  #patientCard .motivo{font-weight:700;color:var(--coral)}
+
+  #logCard{top:16px;right:16px;width:230px;background:var(--cream);border-radius:18px;
+    padding:14px 16px;box-shadow:var(--card-shadow);border:2px solid var(--teal)}
+  #logCard h2{font-family:'Baloo 2',cursive;font-size:.95rem;color:var(--teal-dark);margin-bottom:8px}
+  #logCard ul{list-style:none;font-size:.8rem}
+  #logCard li{padding:4px 0;display:flex;align-items:center;gap:8px;color:#7d8f94}
+  #logCard li::before{content:'○';color:#b9c8c5;font-size:.9rem}
+  #logCard li.done{color:var(--ink);font-weight:700}
+  #logCard li.done::before{content:'✔';color:var(--ok)}
+  #logCard li.done{cursor:pointer}
+  #logCard li.done:hover{color:var(--teal)}
+  #dxBtn{margin-top:12px;width:100%;font-family:'Baloo 2',cursive;font-size:.95rem;
+    background:var(--coral);color:#fff;border:none;border-radius:14px;padding:10px;
+    cursor:pointer;opacity:.45;transition:.2s;box-shadow:0 6px 0 #c94a32}
+  #dxBtn.ready{opacity:1}
+  #dxBtn.ready:hover{transform:translateY(-2px)}
+  #dxBtn.ready:active{transform:translateY(2px);box-shadow:0 2px 0 #c94a32}
+
+  #hint{bottom:18px;left:50%;transform:translateX(-50%);background:rgba(14,74,62,.85);
+    color:#EAF6F2;border-radius:99px;padding:9px 22px;font-size:.82rem;font-weight:600;
+    backdrop-filter:blur(4px);white-space:nowrap}
+
+  /* hotspot labels that follow 3D points */
+  .hp-label{position:fixed;z-index:4;transform:translate(-50%,-130%);pointer-events:none;
+    background:var(--cream);border:2px solid var(--teal);color:var(--teal-dark);
+    font-size:.72rem;font-weight:800;border-radius:99px;padding:3px 12px;
+    box-shadow:0 4px 12px rgba(0,0,0,.18);white-space:nowrap;transition:opacity .15s}
+  .hp-label .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--coral);margin-right:6px}
+  .hp-label.dim{opacity:.35}
+
+  /* ---------- Modal de resultados ---------- */
+  #overlay{position:fixed;inset:0;z-index:20;background:rgba(10,40,34,.55);
+    display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+  #overlay.open{display:flex}
+  #panel{width:min(620px,92vw);max-height:88vh;overflow-y:auto;background:var(--cream);
+    border-radius:22px;border:3px solid var(--teal);box-shadow:var(--card-shadow);
+    padding:24px 26px;animation:pop .25s cubic-bezier(.2,1.4,.4,1)}
+  @keyframes pop{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
+  #panel h2{font-family:'Baloo 2',cursive;color:var(--teal-dark);font-size:1.45rem;margin-bottom:2px}
+  #panel .sub{font-size:.78rem;font-weight:700;color:#7d8f94;text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px}
+  #panel .close{position:sticky;float:right;top:0;background:var(--teal);color:#fff;border:none;
+    width:34px;height:34px;border-radius:50%;font-size:1rem;cursor:pointer;font-weight:800}
+  #panel table{width:100%;border-collapse:collapse;font-size:.85rem;margin:8px 0 14px}
+  #panel th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;
+    color:#7d8f94;padding:6px 8px;border-bottom:2px solid var(--mint)}
+  #panel td{padding:7px 8px;border-bottom:1px solid #ece4d6}
+  #panel td.flag-high{color:var(--coral);font-weight:800}
+  #panel td.flag-low{color:#3a7bd5;font-weight:800}
+  #panel .note{background:var(--mint);border-radius:14px;padding:12px 16px;font-size:.85rem;line-height:1.5;margin-top:6px}
+  #panel .note b{color:var(--teal-dark)}
+  .canvas-wrap{display:flex;justify-content:center;margin:10px 0}
+  .canvas-wrap canvas{border-radius:18px;max-width:100%}
+  #micCanvas{border-radius:50% !important;border:14px solid #1c1c24;box-shadow:0 0 0 4px #3a3a48, var(--card-shadow)}
+
+  /* loading bar */
+  #procWrap{display:none;flex-direction:column;align-items:center;gap:14px;padding:30px 0}
+  #procWrap.show{display:flex}
+  .spinner{width:46px;height:46px;border-radius:50%;border:5px solid var(--mint);border-top-color:var(--coral);animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #procText{font-weight:700;color:var(--teal-dark)}
+
+  /* snap test */
+  .snap{width:240px;height:90px;background:#fff;border:3px solid #d8d2c4;border-radius:14px;
+    margin:14px auto;position:relative;display:flex;align-items:center;justify-content:center;gap:6px}
+  .snap .well{width:26px;height:26px;border-radius:50%;background:#f3ece0;border:2px solid #d8d2c4;position:absolute;left:18px}
+  .snap .window{width:110px;height:36px;background:#fdf8ef;border:2px solid #d8d2c4;border-radius:8px;position:relative;overflow:hidden}
+  .snap .band{position:absolute;top:0;bottom:0;width:7px;border-radius:2px}
+  .snap .band.c{left:24px;background:#7a4f9e}
+  .snap .band.t{left:70px;background:#b03060;animation:appear 2.2s ease forwards;opacity:0}
+  @keyframes appear{0%{opacity:0}60%{opacity:0}100%{opacity:1}}
+  .snap .lbl{position:absolute;font-size:.6rem;font-weight:800;color:#8a8a8a;top:-16px}
+  .snap .lbl.c{left:22px}.snap .lbl.t{left:68px}
+
+  /* diagnosis */
+  .dx-option{display:block;width:100%;text-align:left;background:#fff;border:2px solid var(--mint);
+    border-radius:14px;padding:12px 16px;margin:8px 0;font-family:'Nunito';font-size:.92rem;
+    font-weight:700;color:var(--ink);cursor:pointer;transition:.15s}
+  .dx-option:hover{border-color:var(--teal);transform:translateX(4px)}
+  .dx-option.correct{background:#E4F6EC;border-color:var(--ok);color:var(--teal-dark)}
+  .dx-option.wrong{background:#FDEAE5;border-color:var(--coral)}
+  .result-banner{font-family:'Baloo 2',cursive;font-size:1.5rem;text-align:center;margin:8px 0 4px}
+  .result-banner.good{color:var(--ok)}
+  .result-banner.bad{color:var(--coral)}
+  .restart{display:block;margin:16px auto 0;background:var(--teal);color:#fff;border:none;
+    font-family:'Baloo 2',cursive;font-size:1rem;border-radius:14px;padding:10px 28px;cursor:pointer;
+    box-shadow:0 6px 0 var(--teal-dark)}
+  .restart:active{transform:translateY(3px);box-shadow:0 2px 0 var(--teal-dark)}
+
+  .confetti{position:fixed;top:-12px;z-index:30;font-size:1.3rem;animation:fall linear forwards;pointer-events:none}
+  @keyframes fall{to{transform:translateY(110vh) rotate(720deg)}}
+
+  @media (max-width:760px){
+    #patientCard{max-width:46vw;padding:10px 12px}
+    #patientCard p{font-size:.72rem}
+    #logCard{width:46vw;padding:10px 12px}
+    #hint{font-size:.7rem;padding:7px 14px;max-width:92vw;white-space:normal;text-align:center}
+  }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<!-- HUD -->
+<div class="hud" id="patientCard" style="position:fixed">
+  <span class="tag">Caso clínico 01</span>
+  <h1>🐕 “Manchas”, mestizo · 4 a · ♂</h1>
+  <p><span class="motivo">Motivo de consulta:</span> decaimiento y pérdida de peso de 2 meses. Descamación periocular y “las uñas le crecen raro”. Vive en jardín, viaja al sur en verano.</p>
+</div>
+
+<div class="hud" id="logCard" style="position:fixed">
+  <h2>📋 Historia clínica</h2>
+  <ul id="logList"></ul>
+  <button id="dxBtn">Emitir diagnóstico</button>
+</div>
+
+<div class="hud" id="hint" style="position:fixed">🖱️ Arrastra para girar · rueda para zoom · pulsa las etiquetas para hacer pruebas</div>
+
+<!-- Modal -->
+<div id="overlay">
+  <div id="panel">
+    <button class="close" onclick="closePanel()">✕</button>
+    <div id="procWrap"><div class="spinner"></div><div id="procText">Procesando…</div></div>
+    <div id="panelContent"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* =====================================================
+   VetClinic 3D — demo jugable
+   ===================================================== */
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9fd6c9);
+scene.fog = new THREE.Fog(0x9fd6c9, 14, 26);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, .1, 100);
+
+/* ---------- luces ---------- */
+scene.add(new THREE.HemisphereLight(0xeafff6, 0x6a8a7e, .75));
+const sun = new THREE.DirectionalLight(0xfff3df, 1.0);
+sun.position.set(6,9,4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-8; sun.shadow.camera.right=8;
+sun.shadow.camera.top=8; sun.shadow.camera.bottom=-8;
+scene.add(sun);
+const lamp = new THREE.PointLight(0xfff0d0,.5,10);
+lamp.position.set(0,3.4,0); scene.add(lamp);
+
+/* ---------- helpers ---------- */
+const M = (c,opts={}) => new THREE.MeshStandardMaterial({color:c, roughness:.85, metalness:.05, ...opts});
+function box(w,h,d,c,x=0,y=0,z=0,mat){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat||M(c));
+  m.position.set(x,y,z); m.castShadow = true; m.receiveShadow = true; return m;
+}
+function cyl(rt,rb,h,c,x=0,y=0,z=0,seg=20){
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg), M(c));
+  m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true; return m;
+}
+function sph(r,c,x=0,y=0,z=0,sx=1,sy=1,sz=1){
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r,22,18), M(c));
+  m.position.set(x,y,z); m.scale.set(sx,sy,sz); m.castShadow=true; m.receiveShadow=true; return m;
+}
+
+/* ---------- sala ---------- */
+const room = new THREE.Group(); scene.add(room);
+// suelo madera clara
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(16,16), M(0xD9B98C,{roughness:.95}));
+floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; room.add(floor);
+// listones
+for(let i=-7;i<=7;i+=1.1){
+  const slat = box(.03,.012,16,0xC8A878,i,.006,0); slat.castShadow=false; room.add(slat);
+}
+// paredes (esquina en L)
+const wallMat = M(0xBFE3DB,{roughness:1});
+const wall1 = box(16,5,.3,0xBFE3DB,0,2.5,-8,wallMat);
+const wall2 = box(.3,5,16,0xBFE3DB,-8,2.5,0,wallMat);
+wall1.receiveShadow = wall2.receiveShadow = true;
+room.add(wall1,wall2);
+// zócalo
+room.add(box(16,.5,.34,0x176B5B,0,.25,-7.99));
+room.add(box(.34,.5,16,0x176B5B,-7.99,.25,0));
+// ventana
+const win = box(3.4,2,.1,0xCFF2FF,2.4,2.8,-7.86,M(0xCFF2FF,{emissive:0xBFEFFF,emissiveIntensity:.45,roughness:.3}));
+room.add(win);
+room.add(box(3.7,.14,.16,0xFFFFFF,2.4,3.85,-7.84));
+room.add(box(3.7,.14,.16,0xFFFFFF,2.4,1.75,-7.84));
+room.add(box(.14,2.2,.16,0xFFFFFF,.62,2.8,-7.84));
+room.add(box(.14,2.2,.16,0xFFFFFF,4.18,2.8,-7.84));
+room.add(box(.1,2.2,.16,0xFFFFFF,2.4,2.8,-7.84));
+// póster "anatomía"
+const poster = box(1.6,2,.06,0xFFF9F0,-4.2,2.7,-7.86);
+room.add(poster);
+room.add(box(1.3,1.4,.02,0xFFC9A8,-4.2,2.75,-7.81)); // silueta
+room.add(box(1.7,.1,.1,0x176B5B,-4.2,3.75,-7.84));
+// cruz veterinaria en pared 2
+const crossG = new THREE.Group();
+crossG.add(box(.9,.3,.08,0x2E9E6B));
+crossG.add(box(.3,.9,.08,0x2E9E6B));
+crossG.position.set(-7.82,3.2,3); crossG.rotation.y = Math.PI/2;
+room.add(crossG);
+// planta
+const pot = cyl(.28,.2,.45,0xC96A4A,5.8,.23,-6.8); room.add(pot);
+const leaves = new THREE.Group();
+for(let i=0;i<6;i++){
+  const l = sph(.26,0x3E8E5E, Math.cos(i)*0.18, .75+ (i%3)*.22, Math.sin(i)*0.18, 1,1.4,1);
+  leaves.add(l);
+}
+leaves.position.set(5.8,0,-6.8); room.add(leaves);
+
+/* ---------- mesa de exploración ---------- */
+const table = new THREE.Group();
+table.add(box(2.6,.14,1.3,0xEFEFF4,0,1.05,0));            // tablero inox
+table.add(box(2.6,.05,1.3,0xBFC7CF,0,.97,0));
+table.add(cyl(.07,.07,1,0x9aa3ab,-1.1,.5,-.5));
+table.add(cyl(.07,.07,1,0x9aa3ab, 1.1,.5,-.5));
+table.add(cyl(.07,.07,1,0x9aa3ab,-1.1,.5,.5));
+table.add(cyl(.07,.07,1,0x9aa3ab, 1.1,.5,.5));
+table.add(box(2.2,.04,1,0x2E9E6B,0,1.13,0));               // colchoneta verde
+scene.add(table);
+
+/* ---------- perro "Manchas" ---------- */
+const WHITE = 0xF6EFE3, BROWN = 0x8A5A33, DARK = 0x4A3220;
+const dog = new THREE.Group();
+const dogBody = sph(.42,WHITE,0,0,0,1.55,1,1.05);            // tronco
+dog.add(dogBody);
+// manchas
+dog.add(sph(.18,BROWN,.28,.22,.28,1.4,.6,1));
+dog.add(sph(.15,BROWN,-.35,.18,-.3,1.2,.7,1));
+dog.add(sph(.12,BROWN,.05,-.1,.42,1,.8,.5));
+// pecho (respiración)
+const chest = sph(.34,WHITE,.38,-.05,0,1.1,1,1.05); dog.add(chest);
+// cabeza
+const head = new THREE.Group();
+head.add(sph(.3,WHITE));
+head.add(sph(.16,BROWN,.05,.2,.16,1.3,.8,1));               // mancha ojo (¡spot!)
+const muzzle = sph(.16,WHITE,.24,-.06,0,1.4,.8,.9); head.add(muzzle);
+head.add(sph(.07,DARK,.43,-.03,0));                          // trufa
+const eyeL = sph(.045,0x1c1c1c,.22,.1,.17), eyeR = sph(.045,0x1c1c1c,.22,.1,-.17);
+head.add(eyeL,eyeR);
+const earL = sph(.1,BROWN,-.05,.26,.2,1,1.7,.5);
+const earR = sph(.1,DARK,-.05,.26,-.2,1,1.7,.5);
+earL.rotation.z = .4; earR.rotation.z = .4;
+head.add(earL,earR);
+head.position.set(.78,.32,0); head.rotation.z = -.15;
+dog.add(head);
+// patas (tumbado: dobladas)
+[[-.45,.32],[-.45,-.32],[.42,.32],[.42,-.32]].forEach(p=>{
+  dog.add(sph(.11,WHITE,p[0],-.3,p[1],1.6,.7,1));
+});
+// cola
+const tail = new THREE.Group();
+const tailSeg = sph(.08,BROWN,.22,0,0,2.4,.8,.8);
+tail.add(tailSeg);
+tail.position.set(-.62,.05,0);
+dog.add(tail);
+dog.position.set(0,1.46,0);
+dog.rotation.y = .35;
+scene.add(dog);
+
+/* ---------- analizador hematología/bioquímica ---------- */
+const analyzer = new THREE.Group();
+analyzer.add(box(1.6,1,.9,0xF4F4F8,0,2.0,0));               // cuerpo
+analyzer.add(box(.9,.5,.06,0x14323C,0,2.18,.46));           // pantalla
+analyzer.add(box(.7,.06,.04,0x35E0A1,0,2.3,.49,M(0x35E0A1,{emissive:0x35E0A1,emissiveIntensity:.8})));
+analyzer.add(box(.5,.04,.04,0x6AC8E8,0,2.18,.49,M(0x6AC8E8,{emissive:0x6AC8E8,emissiveIntensity:.6})));
+analyzer.add(box(.3,.1,.2,0xC94A32,-.55,1.62,.36));         // tubo rack
+analyzer.add(box(1.8,1,1,0xFFFFFF,0,.95,0));                // mueble
+analyzer.add(box(1.8,.08,1.05,0x176B5B,0,1.49,0));
+analyzer.position.set(-6.6,0,-2.2); analyzer.rotation.y = Math.PI/2;
+scene.add(analyzer);
+
+/* ---------- microscopio sobre escritorio ---------- */
+const micro = new THREE.Group();
+micro.add(box(1.7,.1,1,0xC8996B,0,1.06,0));                 // mesa
+micro.add(box(.12,1.06,.12,0x8a6a48,-.7,.53,-.35));
+micro.add(box(.12,1.06,.12,0x8a6a48,.7,.53,-.35));
+micro.add(box(.12,1.06,.12,0x8a6a48,.7,.53,.35));
+micro.add(box(.12,1.06,.12,0x8a6a48,-.7,.53,.35));
+const scope = new THREE.Group();
+scope.add(box(.4,.08,.3,0x2b2b33,0,0,0));                   // base
+scope.add(cyl(.05,.05,.5,0x2b2b33,-.08,.3,0));              // brazo
+scope.add(box(.3,.06,.2,0x44444f,.05,.32,0));               // platina
+scope.add(cyl(.06,.06,.3,0x2b2b33,.1,.55,0));               // tubo
+const ocular = cyl(.05,.06,.12,0xD8D8E0,.1,.74,0); scope.add(ocular);
+scope.position.set(0,1.12,0);
+micro.add(scope);
+micro.add(box(.22,.02,.1,0xCFE9FF,.38,1.13,.25));           // porta
+micro.position.set(-6.4,0,2.8); micro.rotation.y = Math.PI/2 - .2;
+scene.add(micro);
+
+/* ---------- carro de ecografía ---------- */
+const eco = new THREE.Group();
+eco.add(box(.9,.7,.7,0xF4F4F8,0,1.0,0));
+eco.add(box(.8,.55,.06,0x10262E,0,1.55,.2,M(0x10262E,{emissive:0x1A4A5E,emissiveIntensity:.35})));
+eco.add(box(.55,.3,.04,0x6AC8E8,0,1.58,.24,M(0x6AC8E8,{emissive:0x9ADfff,emissiveIntensity:.5})));
+eco.add(box(.9,.1,.7,0xBFC7CF,0,.6,0));
+[[-.35,.3],[.35,.3],[-.35,-.3],[.35,-.3]].forEach(p=>eco.add(sph(.07,0x333,p[0],.12,p[1])));
+const probe = sph(.07,0x444455,.5,1.15,.25,1,1.8,.7); eco.add(probe);
+eco.position.set(3.2,0,-5.8); eco.rotation.y = -.5;
+scene.add(eco);
+
+/* ---------- mostrador con test rápido ---------- */
+const counter = new THREE.Group();
+counter.add(box(2.4,1,1,0xFFFFFF,0,.5,0));
+counter.add(box(2.5,.1,1.1,0x176B5B,0,1.05,0));
+const snapKit = box(.42,.05,.2,0xFFF9F0,.5,1.13,.1);
+counter.add(snapKit);
+counter.add(box(.36,.02,.14,0xEADDC8,.5,1.16,.1));
+counter.add(cyl(.05,.05,.16,0xC94A32,-.4,1.2,.15));          // tubo EDTA
+counter.add(cyl(.05,.05,.16,0xF2B53A,-.6,1.2,.05));          // tubo suero
+counter.position.set(4.6,0,-1.6); counter.rotation.y = -Math.PI/2;
+scene.add(counter);
+
+/* ---------- báscula decorativa ---------- */
+const scale_ = new THREE.Group();
+scale_.add(box(1.1,.08,.8,0x9aa3ab,0,.05,0));
+scale_.add(box(1.0,.04,.7,0x2E9E6B,0,.1,0));
+scale_.position.set(-2.8,0,3.6);
+scene.add(scale_);
+
+/* =====================================================
+   Cámara orbital propia (sin OrbitControls)
+   ===================================================== */
+let theta = .85, phi = 1.12, radius = 7.2;
+const target = new THREE.Vector3(.2,1.3,0);
+function updateCam(){
+  phi = Math.max(.5, Math.min(1.45, phi));
+  radius = Math.max(3.5, Math.min(13, radius));
+  camera.position.set(
+    target.x + radius*Math.sin(phi)*Math.cos(theta),
+    target.y + radius*Math.cos(phi),
+    target.z + radius*Math.sin(phi)*Math.sin(theta)
+  );
+  camera.lookAt(target);
+}
+updateCam();
+
+let dragging=false, moved=0, px=0, py=0;
+canvas.addEventListener('pointerdown', e=>{dragging=true;moved=0;px=e.clientX;py=e.clientY;canvas.classList.add('dragging');});
+addEventListener('pointermove', e=>{
+  if(dragging){
+    const dx=e.clientX-px, dy=e.clientY-py;
+    moved += Math.abs(dx)+Math.abs(dy);
+    theta += dx*.006; phi -= dy*.005;
+    px=e.clientX; py=e.clientY; updateCam();
+  }
+});
+addEventListener('pointerup', ()=>{dragging=false;canvas.classList.remove('dragging');});
+canvas.addEventListener('wheel', e=>{e.preventDefault();radius += e.deltaY*.004;updateCam();},{passive:false});
+// pinch zoom móvil
+let pinchD=0;
+canvas.addEventListener('touchmove', e=>{
+  if(e.touches.length===2){
+    const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+    if(pinchD) {radius -= (d-pinchD)*.01; updateCam();}
+    pinchD = d;
+  }
+},{passive:true});
+canvas.addEventListener('touchend', ()=>pinchD=0);
+
+/* =====================================================
+   Hotspots + etiquetas HTML proyectadas
+   ===================================================== */
+const HOTSPOTS = [
+  {id:'explo', name:'🩺 Explorar paciente', obj:dog,      anchor:new THREE.Vector3(0,2.3,0)},
+  {id:'lab',   name:'🧪 Analizador',        obj:analyzer, anchor:new THREE.Vector3(-6.6,3.1,-2.2)},
+  {id:'cito',  name:'🔬 Microscopio',       obj:micro,    anchor:new THREE.Vector3(-6.4,2.4,2.8)},
+  {id:'eco',   name:'📡 Ecógrafo',          obj:eco,      anchor:new THREE.Vector3(3.2,2.4,-5.8)},
+  {id:'snap',  name:'🩸 Test rápido',       obj:counter,  anchor:new THREE.Vector3(4.6,1.9,-1.6)},
+];
+HOTSPOTS.forEach(h=>{
+  const el = document.createElement('div');
+  el.className='hp-label';
+  el.innerHTML = `<span class="dot"></span>${h.name}`;
+  el.style.pointerEvents='auto'; el.style.cursor='pointer';
+  el.addEventListener('click',()=>openTest(h.id));
+  document.body.appendChild(el);
+  h.el = el;
+});
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+canvas.addEventListener('click', e=>{
+  if(moved>6) return; // era drag
+  pointer.x = (e.clientX/innerWidth)*2-1;
+  pointer.y = -(e.clientY/innerHeight)*2+1;
+  raycaster.setFromCamera(pointer,camera);
+  for(const h of HOTSPOTS){
+    if(raycaster.intersectObject(h.obj,true).length){openTest(h.id);return;}
+  }
+});
+canvas.addEventListener('pointermove', e=>{
+  if(dragging) return;
+  pointer.x = (e.clientX/innerWidth)*2-1;
+  pointer.y = -(e.clientY/innerHeight)*2+1;
+  raycaster.setFromCamera(pointer,camera);
+  let over=false;
+  for(const h of HOTSPOTS){ if(raycaster.intersectObject(h.obj,true).length){over=true;break;} }
+  canvas.classList.toggle('hotspot',over);
+});
+
+/* =====================================================
+   Estado del juego y contenido clínico
+   ===================================================== */
+const TESTS = {
+  explo:{label:'Exploración general', done:false},
+  lab:  {label:'Hemograma + bioquímica', done:false},
+  cito: {label:'Citología (linfonodo)', done:false},
+  eco:  {label:'Ecografía abdominal', done:false},
+  snap: {label:'Test rápido serológico', done:false},
+};
+const logList = document.getElementById('logList');
+Object.entries(TESTS).forEach(([id,t])=>{
+  const li = document.createElement('li');
+  li.id = 'log-'+id; li.textContent = t.label;
+  li.addEventListener('click',()=>{ if(TESTS[id].done) showResult(id); });
+  logList.appendChild(li);
+});
+const dxBtn = document.getElementById('dxBtn');
+dxBtn.addEventListener('click',()=>{ if(dxBtn.classList.contains('ready')) showDiagnosis(); });
+let gameOver = false;
+
+function markDone(id){
+  if(TESTS[id].done) return;
+  TESTS[id].done = true;
+  document.getElementById('log-'+id).classList.add('done');
+  const n = Object.values(TESTS).filter(t=>t.done).length;
+  if(n>=2) dxBtn.classList.add('ready');
+}
+
+const overlay = document.getElementById('overlay');
+const panelContent = document.getElementById('panelContent');
+const procWrap = document.getElementById('procWrap');
+const procText = document.getElementById('procText');
+function closePanel(){ overlay.classList.remove('open'); }
+overlay.addEventListener('click',e=>{ if(e.target===overlay && !gameOver) closePanel(); });
+window.closePanel = closePanel;
+
+const PROC_TIME = {explo:900, lab:2200, cito:1800, eco:1500, snap:2400};
+const PROC_MSG  = {explo:'Explorando al paciente…', lab:'Centrifugando y analizando muestra…',
+                   cito:'Tiñendo con Diff-Quik…', eco:'Aplicando gel y barriendo abdomen…',
+                   snap:'Migrando la muestra… espera la banda control…'};
+
+function openTest(id){
+  if(gameOver) return;
+  overlay.classList.add('open');
+  panelContent.innerHTML='';
+  if(TESTS[id].done){ showResult(id); return; }
+  procWrap.classList.add('show');
+  procText.textContent = PROC_MSG[id];
+  setTimeout(()=>{
+    procWrap.classList.remove('show');
+    markDone(id);
+    showResult(id);
+  }, PROC_TIME[id]);
+}
+
+function row(p,v,r,flag){
+  const cls = flag==='↑'?'flag-high':flag==='↓'?'flag-low':'';
+  return `<tr><td>${p}</td><td class="${cls}">${v} ${flag||''}</td><td style="color:#7d8f94">${r}</td></tr>`;
+}
+
+function showResult(id){
+  overlay.classList.add('open');
+  procWrap.classList.remove('show');
+  let html='';
+  if(id==='explo'){
+    html = `<h2>🩺 Exploración general</h2><div class="sub">Paciente: Manchas · 18,4 kg (CC 3/9)</div>
+    <table><tr><th>Parámetro</th><th>Hallazgo</th><th>Referencia</th></tr>
+    ${row('Temperatura','39,4 °C','38,0–39,2','↑')}
+    ${row('FC','110 lpm','70–120','')}
+    ${row('FR','28 rpm','15–30','')}
+    ${row('Mucosas','pálidas, TRC 2 s','rosadas <2 s','')}
+    </table>
+    <div class="note"><b>Hallazgos relevantes:</b> linfadenomegalia poplítea y preescapular bilateral · descamación furfurácea periocular y en pabellones · <b>onicogrifosis</b> · atrofia de músculos maseteros · condición corporal baja con apetito conservado.</div>`;
+  }
+  if(id==='lab'){
+    html = `<h2>🧪 Hemograma y bioquímica</h2><div class="sub">Sangre EDTA + suero · analizador interno</div>
+    <table><tr><th>Hemograma</th><th>Valor</th><th>Referencia</th></tr>
+    ${row('Hematocrito','28 %','37–55','↓')}
+    ${row('Hemoglobina','9,6 g/dl','12–18','↓')}
+    ${row('Reticulocitos','38 000/µl','>60 000 = regen.','')}
+    ${row('Leucocitos','9,4 ×10³/µl','6–17','')}
+    ${row('Plaquetas','168 ×10³/µl','200–500','↓')}
+    </table>
+    <table><tr><th>Bioquímica</th><th>Valor</th><th>Referencia</th></tr>
+    ${row('Proteínas totales','9,2 g/dl','5,4–7,5','↑')}
+    ${row('Albúmina','2,1 g/dl','2,6–4,0','↓')}
+    ${row('Globulinas','7,1 g/dl','2,3–4,5','↑')}
+    ${row('Ratio Alb/Glob','0,30','>0,6','↓')}
+    ${row('Creatinina','1,2 mg/dl','0,5–1,5','')}
+    ${row('Ratio UPC (orina)','1,8','<0,5','↑')}
+    </table>
+    <div class="note"><b>Interpretación:</b> anemia normocítica normocrómica <b>no regenerativa</b> + <b>hiperglobulinemia con hipoalbuminemia</b> (inversión A/G) + proteinuria significativa. Patrón compatible con enfermedad inflamatoria crónica / infecciosa sistémica.</div>`;
+  }
+  if(id==='cito'){
+    html = `<h2>🔬 Citología de linfonodo poplíteo (PAF)</h2><div class="sub">Tinción Diff-Quik · 100× inmersión</div>
+    <div class="canvas-wrap"><canvas id="micCanvas" width="340" height="340"></canvas></div>
+    <div class="note"><b>Descripción:</b> hiperplasia linfoide reactiva con marcada <b>plasmocitosis</b>. Macrófagos con estructuras intracitoplasmáticas ovales de 2–4 µm con núcleo y <b>kinetoplasto</b> en barra → <b>amastigotes de <i>Leishmania</i> spp.</b> 🎯</div>`;
+  }
+  if(id==='eco'){
+    html = `<h2>📡 Ecografía abdominal</h2><div class="sub">Sonda microconvex 8 MHz</div>
+    <div class="canvas-wrap"><canvas id="ecoCanvas" width="420" height="300"></canvas></div>
+    <div class="note"><b>Informe:</b> <b>esplenomegalia</b> difusa con parénquima discretamente heterogéneo ("moteado"). Linfonodos mesentéricos prominentes. Riñones con leve hiperecogenicidad cortical. Resto de estructuras sin alteraciones significativas.</div>`;
+  }
+  if(id==='snap'){
+    html = `<h2>🩸 Test rápido serológico (ICT)</h2><div class="sub">Anticuerpos anti-Leishmania · suero</div>
+    <div class="snap"><div class="well"></div>
+      <div class="window"><span class="lbl c">C</span><span class="lbl t">T</span>
+      <div class="band c"></div><div class="band t"></div></div></div>
+    <div class="note"><b>Resultado: POSITIVO</b> (banda test de intensidad fuerte). Se recomienda confirmar con <b>serología cuantitativa (IFI/ELISA)</b> y estadificar (LeishVet) con proteinograma y UPC antes de iniciar tratamiento.</div>`;
+  }
+  panelContent.innerHTML = html;
+  if(id==='cito') drawMicroscope();
+  if(id==='eco') drawEco();
+}
+
+/* ---------- vista de microscopio (canvas 2D) ---------- */
+function drawMicroscope(){
+  const c = document.getElementById('micCanvas'), ctx = c.getContext('2d');
+  const W=c.width, H=c.height;
+  ctx.fillStyle='#f6e3ef'; ctx.fillRect(0,0,W,H);
+  // hematíes de fondo
+  for(let i=0;i<140;i++){
+    const x=Math.random()*W, y=Math.random()*H, r=6+Math.random()*3;
+    ctx.beginPath(); ctx.arc(x,y,r,0,7);
+    ctx.fillStyle='rgba(240,160,170,.55)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x,y,r*.45,0,7);
+    ctx.fillStyle='rgba(250,215,220,.8)'; ctx.fill();
+  }
+  // linfocitos / células plasmáticas
+  for(let i=0;i<10;i++){
+    const x=30+Math.random()*(W-60), y=30+Math.random()*(H-60), r=10+Math.random()*4;
+    ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fillStyle='#cfe0f5'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x-r*.2,y,r*.72,0,7); ctx.fillStyle='#5b4a8f'; ctx.fill();
+  }
+  // 2 macrófagos con amastigotes
+  const mac=[{x:W*.38,y:H*.42,r:46},{x:W*.66,y:H*.66,r:38}];
+  mac.forEach(m=>{
+    ctx.beginPath(); ctx.arc(m.x,m.y,m.r,0,7); ctx.fillStyle='#dfeaf7'; ctx.fill();
+    ctx.strokeStyle='#a9c0dd'; ctx.lineWidth=2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(m.x-m.r*.45,m.y-m.r*.3,m.r*.4,0,7); ctx.fillStyle='#6a5a9e'; ctx.fill();
+    // amastigotes: óvalo + núcleo + kinetoplasto
+    for(let i=0;i<9;i++){
+      const a=Math.random()*7, d=Math.random()*m.r*.55+6;
+      const ax=m.x+Math.cos(a)*d+m.r*.15, ay=m.y+Math.sin(a)*d+m.r*.1;
+      ctx.save(); ctx.translate(ax,ay); ctx.rotate(Math.random()*3);
+      ctx.beginPath(); ctx.ellipse(0,0,5,3.4,0,0,7); ctx.fillStyle='#e8f0fa'; ctx.fill();
+      ctx.strokeStyle='#9bb'; ctx.lineWidth=.8; ctx.stroke();
+      ctx.beginPath(); ctx.arc(-1.4,0,1.7,0,7); ctx.fillStyle='#7a3f8f'; ctx.fill();   // núcleo
+      ctx.fillStyle='#4a235a'; ctx.fillRect(1.6,-1.6,1.1,3.2);                          // kinetoplasto
+      ctx.restore();
+    }
+  });
+  // viñeta circular del ocular
+  const g = ctx.createRadialGradient(W/2,H/2,W*.34,W/2,H/2,W*.52);
+  g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(10,10,20,.9)');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='rgba(255,255,255,.55)'; ctx.font='11px Nunito';
+  ctx.fillText('100× · Diff-Quik', 18, H-18);
+}
+
+/* ---------- imagen ecográfica (canvas 2D) ---------- */
+function drawEco(){
+  const c = document.getElementById('ecoCanvas'), ctx = c.getContext('2d');
+  const W=c.width, H=c.height;
+  ctx.fillStyle='#06090c'; ctx.fillRect(0,0,W,H);
+  // sector
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(W/2,8);
+  ctx.arc(W/2,8,H-20,Math.PI*.22+Math.PI/2,Math.PI*-.22+Math.PI/2,true);
+  ctx.closePath(); ctx.clip();
+  // ruido speckle
+  const img = ctx.createImageData(W,H);
+  for(let i=0;i<img.data.length;i+=4){
+    const v = 14+Math.random()*46;
+    img.data[i]=v; img.data[i+1]=v; img.data[i+2]=v+4; img.data[i+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+  // bazo grande (banda hipoecoica homogénea moteada)
+  ctx.beginPath();
+  ctx.ellipse(W*.5,H*.55,W*.34,H*.2,-.15,0,7);
+  ctx.fillStyle='rgba(150,155,165,.55)'; ctx.fill();
+  for(let i=0;i<260;i++){
+    const a=Math.random()*7, rx=Math.random()*W*.32, ry=Math.random()*H*.18;
+    ctx.fillStyle=`rgba(${120+Math.random()*80},${120+Math.random()*80},${130+Math.random()*80},.5)`;
+    ctx.fillRect(W*.5+Math.cos(a)*rx, H*.55+Math.sin(a)*ry, 2,2);
+  }
+  // cápsula
+  ctx.beginPath(); ctx.ellipse(W*.5,H*.55,W*.34,H*.2,-.15,0,7);
+  ctx.strokeStyle='rgba(230,235,245,.8)'; ctx.lineWidth=2; ctx.stroke();
+  // campo cercano brillante
+  ctx.fillStyle='rgba(220,225,235,.25)'; ctx.fillRect(0,8,W,26);
+  ctx.restore();
+  // HUD del ecógrafo
+  ctx.fillStyle='#9adfff'; ctx.font='12px monospace';
+  ctx.fillText('B-MODE  8.0MHz  D:9cm  G:54', 12, 18);
+  ctx.fillText('BAZO — eje largo', 12, H-14);
+  ctx.fillStyle='#f2b53a';
+  ctx.fillText('Long. esplénica: 14,2 cm ▲', W-220, H-14);
+  // marcas de profundidad
+  ctx.fillStyle='#5a7a8a';
+  for(let y=30;y<H-10;y+=40) ctx.fillRect(W-10,y,5,2);
+}
+
+/* =====================================================
+   Diagnóstico final
+   ===================================================== */
+const DX = [
+  {t:'Dermatitis atópica canina', ok:false,
+   why:'La atopia cursa con prurito como signo cardinal y no explica la anemia, la hiperglobulinemia ni los amastigotes en la citología.'},
+  {t:'Leishmaniosis canina', ok:true,
+   why:'Signos sistémicos + dermatológicos (descamación, onicogrifosis), anemia no regenerativa, inversión Alb/Glob, proteinuria, amastigotes en linfonodo y serología positiva. ¡Diagnóstico de libro!'},
+  {t:'Sarna sarcóptica', ok:false,
+   why:'Esperaríamos prurito intenso con reflejo otopodal y raspados compatibles; no justifica el cuadro sistémico ni el proteinograma.'},
+  {t:'Hipotiroidismo', ok:false,
+   why:'Puede dar alopecia y letargia, pero no linfadenomegalia generalizada, hiperglobulinemia ni amastigotes intracelulares.'},
+  {t:'Linfoma multicéntrico', ok:false,
+   why:'Buena opción en la lista por la linfadenomegalia, pero la citología muestra hiperplasia reactiva con amastigotes, no población linfoide monomórfica.'},
+];
+
+function showDiagnosis(){
+  overlay.classList.add('open');
+  procWrap.classList.remove('show');
+  const n = Object.values(TESTS).filter(t=>t.done).length;
+  panelContent.innerHTML = `<h2>🎯 Emitir diagnóstico</h2>
+  <div class="sub">Pruebas realizadas: ${n}/5 · elige con cabeza</div>
+  ${DX.map((d,i)=>`<button class="dx-option" data-i="${i}">${d.t}</button>`).join('')}`;
+  panelContent.querySelectorAll('.dx-option').forEach(btn=>{
+    btn.addEventListener('click',()=>resolveDx(+btn.dataset.i));
+  });
+}
+
+function resolveDx(i){
+  gameOver = true;
+  const n = Object.values(TESTS).filter(t=>t.done).length;
+  const pick = DX[i];
+  const stars = pick.ok ? (n<=3 ? '⭐⭐⭐' : n===4 ? '⭐⭐' : '⭐') : '—';
+  panelContent.innerHTML = `
+    <div class="result-banner ${pick.ok?'good':'bad'}">${pick.ok?'¡Diagnóstico correcto! 🎉':'Diagnóstico incorrecto 😿'}</div>
+    <div class="sub" style="text-align:center">Tu elección: ${pick.t} · Eficiencia: ${stars}${pick.ok?` (${n} pruebas)`:''}</div>
+    <div class="note">${pick.why}</div>
+    ${pick.ok?`<div class="note" style="margin-top:10px"><b>Plan:</b> estadificación LeishVet → miltefosina 2 mg/kg SID 28 d + alopurinol 10 mg/kg BID · control de proteinuria · serología cuantitativa y proteinograma de seguimiento a los 3–6 meses. Manchas se va a casa moviendo la cola. 🐾</div>`
+    :`<div class="note" style="margin-top:10px"><b>Pista:</b> revisa el patrón del proteinograma, la onicogrifosis… y lo que viste al microscopio. 🔬</div>`}
+    <button class="restart" onclick="location.reload()">🔁 Nuevo caso</button>`;
+  if(pick.ok) confetti();
+}
+
+function confetti(){
+  const icons=['🎉','🐾','💚','⭐','🦴'];
+  for(let i=0;i<36;i++){
+    const s=document.createElement('span');
+    s.className='confetti';
+    s.textContent=icons[Math.floor(Math.random()*icons.length)];
+    s.style.left=Math.random()*100+'vw';
+    s.style.animationDuration=(2.2+Math.random()*2.5)+'s';
+    s.style.animationDelay=(Math.random()*0.8)+'s';
+    document.body.appendChild(s);
+    setTimeout(()=>s.remove(),5500);
+  }
+}
+
+/* =====================================================
+   Bucle de animación
+   ===================================================== */
+const v = new THREE.Vector3();
+const clock = new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  // respiración
+  const br = 1 + Math.sin(t*2.4)*.035;
+  chest.scale.set(1.1*br,br,1.05*br);
+  dogBody.scale.set(1.55, 1+Math.sin(t*2.4)*.02, 1.05);
+  // cola
+  tail.rotation.y = Math.sin(t*6)*.7;
+  // cabeza mira alrededor
+  head.rotation.y = Math.sin(t*.6)*.25;
+  // orejas
+  earL.rotation.x = Math.sin(t*1.3)*.12;
+  earR.rotation.x = Math.cos(t*1.1)*.12;
+  // hoja de la planta
+  leaves.rotation.y = Math.sin(t*.5)*.06;
+  // etiquetas proyectadas
+  for(const h of HOTSPOTS){
+    v.copy(h.anchor).project(camera);
+    const behind = v.z>1;
+    h.el.style.opacity = behind? 0 : 1;
+    h.el.style.left = ((v.x+1)/2*innerWidth)+'px';
+    h.el.style.top  = ((-v.y+1)/2*innerHeight)+'px';
+    h.el.classList.toggle('dim', TESTS[h.id]?.done);
+  }
+  renderer.setSize(innerWidth,innerHeight,false);
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.render(scene,camera);
+}
+animate();
+</script>
+</body>
+</html>
